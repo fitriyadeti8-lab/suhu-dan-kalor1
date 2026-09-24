@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fluida Dinamis — WebAR Interaktif Fisika SMA</title>
+    <!-- Tailwind CSS for modern glassmorphism UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js for 3D WebGL rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls for touch rotation/zoom -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        #video-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+        #webgl-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: auto;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glow-cyan {
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.35);
+        }
+        .glow-blue {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
+        }
+        /* Custom Scrollbar for Drawer */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.5);
+            border-radius: 4px;
+        }
+        /* Pulse Animation */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+        .animate-pulse-glow {
+            animation: pulseGlow 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden select-none">
+
+    <!-- Background Camera Feed for WebAR -->
+    <video id="video-background" autoplay playsinline muted class="hidden"></video>
+    
+    <!-- 3D Canvas -->
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- UI Layer Header -->
+    <div class="absolute top-0 left-0 right-0 z-30 p-3 sm:p-4 pointer-events-none flex justify-between items-center">
+        <!-- Title & Status -->
+        <div class="glass-panel rounded-2xl p-2.5 sm:p-3 px-4 pointer-events-auto flex items-center space-x-3 shadow-xl">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                <i class="fa-solid font-bold text-xl fa-atom"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-sm sm:text-base tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-sky-200 to-blue-400">
+                    FLUIDA DINAMIS <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 ml-1">WebAR</span>
+                </h1>
+                <p class="text-[10px] sm:text-xs text-slate-300 font-medium">Media Pembelajaran Fisika SMA</p>
+            </div>
+        </div>
+
+        <!-- Action Controls Top Right -->
+        <div class="flex items-center space-x-2 pointer-events-auto">
+            <!-- Camera Toggle Button -->
+            <button id="btn-toggle-camera" onclick="toggleCamera()" title="Aktifkan/Matikan Kamera WebAR" class="glass-panel hover:bg-slate-700/80 text-white w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center transition active:scale-95 shadow-lg border border-slate-600/50">
+                <i id="icon-camera" class="fa-solid fa-video-slash text-rose-400 text-sm sm:text-base"></i>
+            </button>
+            
+            <!-- AR Marker Info Button -->
+            <button onclick="openModal('modal-marker')" title="Petunjuk Marker AR" class="glass-panel hover:bg-slate-700/80 text-cyan-300 w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center transition active:scale-95 shadow-lg border border-cyan-500/30">
+                <i class="fa-solid fa-qrcode text-sm sm:text-base"></i>
+            </button>
+
+            <!-- Guide Info Button -->
+            <button onclick="openModal('modal-guide')" title="Panduan Penggunaan" class="glass-panel hover:bg-slate-700/80 text-amber-300 w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center transition active:scale-95 shadow-lg border border-amber-500/30">
+                <i class="fa-solid fa-circle-question text-sm sm:text-base"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Mode Switcher Pill Floating Header Bottom -->
+    <div class="absolute top-16 sm:top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+        <div class="glass-panel p-1 rounded-2xl flex items-center space-x-1 shadow-2xl border border-white/10">
+            <button id="btn-mode-continuity" onclick="setLearningMode('continuity')" class="px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center space-x-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg">
+                <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                <span>MODE KONTINUITAS</span>
+            </button>
+            <button id="btn-mode-bernoulli" onclick="setLearningMode('bernoulli')" class="px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center space-x-2 text-slate-300 hover:text-white hover:bg-slate-800/50">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span>MODE BERNOULLI</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Formula Overlay Box Top Left -->
+    <div class="absolute top-32 sm:top-36 left-3 sm:left-4 z-20 pointer-events-none max-w-[280px] sm:max-w-xs">
+        <div class="glass-panel rounded-2xl p-3 sm:p-4 text-xs space-y-2 border border-cyan-500/20 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-700/60 pb-1.5">
+                <span id="hud-mode-title" class="font-extrabold text-cyan-300 uppercase tracking-wider text-[11px]">MODE KONTINUITAS</span>
+                <span class="text-[10px] bg-cyan-950 text-cyan-400 px-2 py-0.5 rounded-full font-mono border border-cyan-800/50">Laju Aliran</span>
+            </div>
+            
+            <!-- Dynamic Math Formula -->
+            <div id="hud-formula-container" class="bg-slate-900/80 rounded-xl p-2.5 font-mono text-center text-cyan-200 border border-slate-800 space-y-1">
+                <div id="hud-formula-primary" class="text-xs sm:text-sm font-bold text-yellow-300">A₁ · v₁ = A₂ · v₂</div>
+                <div id="hud-formula-sub" class="text-[10px] text-slate-300">Debit Aliran Konstan ($Q_1 = Q_2$)</div>
+            </div>
+
+            <!-- Comparison Cards -->
+            <div class="grid grid-cols-2 gap-2 text-center text-[11px] font-semibold">
+                <div class="bg-cyan-950/40 border border-cyan-800/40 rounded-xl p-2">
+                    <span class="block text-[10px] text-slate-400">Bagian Penampang 1</span>
+                    <span id="hud-compare-1" class="text-cyan-300 font-bold">A₁ > A₂</span>
+                </div>
+                <div class="bg-blue-950/40 border border-blue-800/40 rounded-xl p-2">
+                    <span class="block text-[10px] text-slate-400">Bagian Penampang 2</span>
+                    <span id="hud-compare-2" class="text-emerald-300 font-bold">v₁ < v₂</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AR Tracking Helper Banner -->
+    <div id="ar-instruction-banner" class="absolute top-32 right-3 sm:right-4 z-20 pointer-events-none hidden sm:block max-w-[200px]">
+        <div class="glass-panel rounded-2xl p-2.5 text-center text-xs text-slate-300 space-y-1">
+            <i class="fa-solid fa-hand-pointer text-cyan-400 text-base animate-bounce"></i>
+            <p class="text-[10px] leading-tight text-slate-200 font-medium">Gunakan 1 jari untuk rotasi, 2 jari untuk zoom 3D pipa.</p>
+        </div>
+    </div>
+
+    <!-- Interactive Pipe Section Inspection Modal / Card -->
+    <div id="pipe-inspector" class="absolute bottom-40 sm:bottom-44 left-1/2 -translate-x-1/2 z-30 pointer-events-auto hidden transition-all duration-300 transform scale-95">
+        <div class="glass-panel rounded-2xl p-3 sm:p-4 border border-cyan-400/40 shadow-2xl max-w-sm w-[90vw] sm:w-80">
+            <div class="flex justify-between items-center border-b border-slate-700/80 pb-2 mb-2">
+                <div class="flex items-center space-x-2">
+                    <div id="inspector-badge" class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+                    <h3 id="inspector-title" class="font-bold text-sm text-cyan-200">Bagian 1 (Pipa Besar)</h3>
+                </div>
+                <button onclick="closeInspector()" class="text-slate-400 hover:text-white text-xs p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="space-y-1.5 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Luas Penampang ($A$):</span>
+                    <span id="inspector-area" class="font-mono font-bold text-cyan-300">4.0 cm²</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Kecepatan Aliran ($v$):</span>
+                    <span id="inspector-velocity" class="font-mono font-bold text-emerald-300">2.0 m/s</span>
+                </div>
+                <div id="inspector-pressure-row" class="flex justify-between">
+                    <span class="text-slate-400">Tekanan Fluida ($P$):</span>
+                    <span id="inspector-pressure" class="font-mono font-bold text-amber-300">10.0 kPa</span>
+                </div>
+                <p id="inspector-desc" class="text-[10px] text-slate-300 bg-slate-900/60 p-2 rounded-lg italic mt-1 border border-slate-800">
+                    Di penampang besar, fluida melaju lebih lambat dan memiliki tekanan hidrodinamis yang lebih tinggi.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Interactive Controls Drawer -->
+    <div class="absolute bottom-0 left-0 right-0 z-30 pointer-events-auto">
+        <div class="glass-panel rounded-t-3xl border-t border-slate-700/60 p-3 sm:p-5 max-w-4xl mx-auto shadow-2xl">
+            <!-- Header Toggle for Drawer Mobile -->
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-sliders text-cyan-400 text-sm"></i>
+                    <span class="font-bold text-xs sm:text-sm text-slate-100">SIMULASI PARAMETER PIPELINE</span>
+                </div>
+
+                <!-- Toggle Visual Items Buttons -->
+                <div class="flex items-center space-x-2">
+                    <button id="btn-toggle-labels" onclick="toggleLabels()" class="px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-800 transition">
+                        <i class="fa-solid fa-tag mr-1"></i> Label 3D
+                    </button>
+                    <button id="btn-toggle-arrows" onclick="toggleArrows()" class="px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-blue-900/60 border border-blue-500/40 text-blue-300 hover:bg-blue-800 transition">
+                        <i class="fa-solid fa-location-arrow mr-1"></i> Panah
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sliders Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <!-- Slider A1 -->
+                <div class="glass-card rounded-2xl p-2.5 sm:p-3 space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <label for="slider-a1" class="text-cyan-300 flex items-center">
+                            <span>Luas Penampang A₁</span>
+                        </label>
+                        <span id="val-a1" class="font-mono text-cyan-400 font-bold">4.0 cm²</span>
+                    </div>
+                    <input type="range" id="slider-a1" min="2.0" max="8.0" step="0.5" value="4.0" oninput="updateSimulationParams()" 
+                           class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+                    <div class="flex justify-between text-[9px] text-slate-400 font-mono">
+                        <span>2.0 cm²</span>
+                        <span>8.0 cm²</span>
+                    </div>
+                </div>
+
+                <!-- Slider A2 -->
+                <div class="glass-card rounded-2xl p-2.5 sm:p-3 space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <label for="slider-a2" class="text-emerald-300 flex items-center">
+                            <span>Luas Penampang A₂ </span>
+                        </label>
+                        <span id="val-a2" class="font-mono text-emerald-400 font-bold">2.0 cm²</span>
+                    </div>
+                    <input type="range" id="slider-a2" min="0.5" max="4.0" step="0.25" value="2.0" oninput="updateSimulationParams()"
+                           class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400">
+                    <div class="flex justify-between text-[9px] text-slate-400 font-mono">
+                        <span>0.5 cm²</span>
+                        <span>4.0 cm²</span>
+                    </div>
+                </div>
+
+                <!-- Slider v1 -->
+                <div class="glass-card rounded-2xl p-2.5 sm:p-3 space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <label for="slider-v1" class="text-amber-300 flex items-center">
+                            <span>Kecepatan Awal v₁</span>
+                        </label>
+                        <span id="val-v1" class="font-mono text-amber-400 font-bold">2.0 m/s</span>
+                    </div>
+                    <input type="range" id="slider-v1" min="0.5" max="4.0" step="0.25" value="2.0" oninput="updateSimulationParams()"
+                           class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400">
+                    <div class="flex justify-between text-[9px] text-slate-400 font-mono">
+                        <span>0.5 m/s</span>
+                        <span>4.0 m/s</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Calculated Results Bar -->
+            <div class="mt-3 bg-slate-900/90 rounded-2xl p-2.5 border border-slate-800 flex flex-wrap items-center justify-between text-xs gap-2">
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400 text-[11px]">Hasil Perhitungan:</span>
+                    <span class="font-mono bg-cyan-950 text-cyan-300 px-2.5 py-1 rounded-xl font-bold border border-cyan-800/60">
+                        v₂ = <span id="calc-v2">4.00</span> m/s
+                    </span>
+                    <span id="calc-pressure-badge" class="font-mono bg-amber-950 text-amber-300 px-2.5 py-1 rounded-xl font-bold border border-amber-800/60">
+                        ΔP = <span id="calc-delta-p">6.00</span> kPa
+                    </span>
+                </div>
+                <div class="text-[10px] text-slate-400 flex items-center space-x-1">
+                    <i class="fa-solid fa-circle-info text-cyan-400"></i>
+                    <span id="calc-explanation">A₁ · v₁ (4.0 × 2.0) = A₂ · v₂ (2.0 × 4.0)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 1: Marker AR Guide Modal -->
+    <div id="modal-marker" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass-panel rounded-3xl p-5 max-w-md w-full border border-cyan-500/30 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="font-bold text-lg text-cyan-300 flex items-center">
+                    <i class="fa-solid fa-qrcode mr-2"></i> Target Marker WebAR
+                </h3>
+                <button onclick="closeModal('modal-marker')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <p class="text-xs text-slate-300 leading-relaxed">
+                Gunakan gambar di bawah ini sebagai **Marker AR**. Arahkan kamera smartphone Anda ke gambar ini (bisa diprint di kertas atau dibuka di layar perangkat lain).
+            </p>
+
+            <!-- Marker Preview Card -->
+            <div class="bg-white p-6 rounded-2xl flex flex-col items-center justify-center border-4 border-black">
+                <div class="w-48 h-48 bg-black flex items-center justify-center relative p-6">
+                    <div class="w-full h-full bg-white flex flex-col items-center justify-center text-black font-extrabold text-center">
+                        <i class="fa-solid fa-cube text-4xl mb-2 text-slate-900"></i>
+                        <span class="text-xs tracking-widest uppercase">AR MARKER</span>
+                        <span class="text-[9px] font-mono text-slate-600 mt-1">FLUIDA DINAMIS</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center text-xs text-slate-400">
+                <span>Tips: Pastikan pencahayaan cukup terang.</span>
+                <button onclick="window.print()" class="px-3 py-1.5 bg-cyan-600 text-white rounded-xl font-medium hover:bg-cyan-500 transition">
+                    <i class="fa-solid fa-print mr-1"></i> Cetak
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Panduan Penggunaan Modal -->
+    <div id="modal-guide" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass-panel rounded-3xl p-5 max-w-md w-full border border-amber-500/30 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="font-bold text-lg text-amber-300 flex items-center">
+                    <i class="fa-solid fa-book-open mr-2"></i> Panduan Belajar Fisika
+                </h3>
+                <button onclick="closeModal('modal-guide')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-300 max-h-[60vh] overflow-y-auto pr-1">
+                <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 space-y-1">
+                    <h4 class="font-bold text-cyan-300 text-sm">1. Persamaan Kontinuitas</h4>
+                    <p class="text-slate-300">
+                        Massa fluida yang masuk ke dalam pipa sama dengan massa fluida yang keluar. Pada fluida inkompresibel, debit fluida konstan:
+                    </p>
+                    <div class="font-mono text-yellow-300 text-center font-bold my-1">Q = A₁ · v₁ = A₂ · v₂</div>
+                    <p class="text-[11px] text-slate-400">
+                        Artinya, ketika pipa menyempit ($A_2 < A_1$), kecepatan air **pasti meningkat** ($v_2 > v_1$).
+                    </p>
+                </div>
+
+                <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 space-y-1">
+                    <h4 class="font-bold text-amber-300 text-sm">2. Hukum Bernoulli</h4>
+                    <p class="text-slate-300">
+                        Untuk pipa horizontal, berlaku hubungan antara tekanan ($P$) dan kecepatan fluida ($v$):
+                    </p>
+                    <div class="font-mono text-amber-300 text-center font-bold my-1">P₁ + ½ρv₁² = P₂ + ½ρv₂²</div>
+                    <p class="text-[11px] text-slate-400">
+                        Ketika kelajuan fluida bertambah tinggi di bagian penampang yang sempit, maka **tekanan fluidanya justru menurun** ($P_2 < P_1$).
+                    </p>
+                </div>
+
+                <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 space-y-1">
+                    <h4 class="font-bold text-emerald-300 text-sm">3. Fitur Interaktif WebAR</h4>
+                    <ul class="list-disc list-inside space-y-1 text-slate-300">
+                        <li>Sentuh & Geser pada pipa 3D untuk memutar sudut pandang.</li>
+                        <li>Pinch jari untuk Zoom In / Out.</li>
+                        <li>Klik pada pipa 1 atau pipa 2 untuk membuka detail data teknis.</li>
+                        <li>Geser slider di bagian bawah untuk melihat simulasi dinamis real-time.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button onclick="closeModal('modal-guide')" class="w-full py-2.5 bg-amber-500 text-slate-950 font-bold rounded-xl hover:bg-amber-400 transition">
+                Mengerti & Lanjutkan
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // State & Simulation Variables
+        let currentMode = 'continuity'; // 'continuity' or 'bernoulli'
+        let showLabels = true;
+        let showArrows = true;
+        let cameraActive = false;
+
+        // Physics State Parameters
+        let paramA1 = 4.0; // cm2
+        let paramA2 = 2.0; // cm2
+        let paramV1 = 2.0; // m/s
+        let paramRho = 1000; // kg/m3 (Air)
+        let paramP1 = 10.0; // kPa gauge pressure at section 1
+
+        // Calculated physics outputs
+        let paramV2 = 4.0; // m/s
+        let paramDeltaP = 6.0; // kPa
+        let paramP2 = 4.0; // kPa
+
+        // Three.js Core Objects
+        let scene, camera, renderer, controls;
+        let pipeGroup, waterMeshGroup, particleGroup, labelGroup, arrowGroup, manometerGroup;
+        let pipeMesh1, pipeMesh2, transitionPipeMesh;
+        let manometerFluid1, manometerFluid2;
+        let raycaster, mouse;
+
+        // Particle System Array
+        const PARTICLE_COUNT = 300;
+        let particles = [];
+
+        window.onload = function() {
+            initThreeJS();
+            setupPhysicsCalculations();
+            setupRaycaster();
+            animate();
+            window.addEventListener('resize', onWindowResize);
+        };
+
+        function initThreeJS() {
+            const canvas = document.getElementById('webgl-canvas');
+            
+            // Scene Setup
+            scene = new THREE.Scene();
+
+            // Camera Setup
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3.5, 9);
+
+            // Renderer Setup with Alpha for AR Transparency
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                alpha: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+
+            // Orbit Controls for smooth Touch/Mouse interaction
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 + 0.1; // Limit below ground
+            controls.minDistance = 3;
+            controls.maxDistance = 18;
+
+            // Lighting Setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+            dirLight1.position.set(5, 10, 7);
+            dirLight1.castShadow = true;
+            scene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 0.5);
+            dirLight2.position.set(-5, -5, -5);
+            scene.add(dirLight2);
+
+            // Create Master Groups
+            pipeGroup = new THREE.Group();
+            waterMeshGroup = new THREE.Group();
+            particleGroup = new THREE.Group();
+            labelGroup = new THREE.Group();
+            arrowGroup = new THREE.Group();
+            manometerGroup = new THREE.Group();
+
+            pipeGroup.add(waterMeshGroup);
+            pipeGroup.add(particleGroup);
+            pipeGroup.add(labelGroup);
+            pipeGroup.add(arrowGroup);
+            pipeGroup.add(manometerGroup);
+
+            scene.add(pipeGroup);
+
+            // Build Initial 3D Geometry
+            buildPipe3DGeometry();
+            createWaterParticles();
+            create3DLabels();
+            createFlowArrows();
+            createManometers();
+        }
+
+        function buildPipe3DGeometry() {
+            // Remove previous geometry if present
+            while (waterMeshGroup.children.length > 0) {
+                waterMeshGroup.remove(waterMeshGroup.children[0]);
+            }
+
+            // Radii computed from cross-sectional areas A = pi * r^2
+            const r1 = Math.sqrt(paramA1 / Math.PI) * 0.45;
+            const r2 = Math.sqrt(paramA2 / Math.PI) * 0.45;
+
+            const length1 = 3.2;
+            const lengthTrans = 1.8;
+            const length2 = 3.2;
+
+            // Materials
+            const glassMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0xe0f2fe,
+                transparent: true,
+                opacity: 0.25,
+                roughness: 0.1,
+                transmission: 0.9,
+                thickness: 0.5,
+                side: THREE.DoubleSide
+            });
+
+            const waterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0284c7,
+                transparent: true,
+                opacity: 0.45,
+                roughness: 0.1,
+                metalness: 0.1
+            });
+
+            const ringMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0284c7,
+                metalness: 0.8,
+                roughness: 0.2
+            });
+
+            // 1. Pipe 1 (Large Section)
+            const geom1 = new THREE.CylinderGeometry(r1, r1, length1, 32, 1, true);
+            geom1.rotateZ(Math.PI / 2);
+            pipeMesh1 = new THREE.Mesh(geom1, glassMaterial);
+            pipeMesh1.position.x = -(lengthTrans / 2 + length1 / 2);
+            pipeMesh1.userData = { section: 1, name: "Bagian 1 (Penampang Besar)" };
+
+            const waterGeom1 = new THREE.CylinderGeometry(r1 * 0.98, r1 * 0.98, length1, 32);
+            waterGeom1.rotateZ(Math.PI / 2);
+            const waterMesh1 = new THREE.Mesh(waterGeom1, waterMaterial);
+            waterMesh1.position.x = pipeMesh1.position.x;
+            waterMeshGroup.add(waterMesh1);
+
+            // 2. Transition Pipe (Venturi Cone)
+            const geomTrans = new THREE.CylinderGeometry(r2, r1, lengthTrans, 32, 1, true);
+            geomTrans.rotateZ(Math.PI / 2);
+            transitionPipeMesh = new THREE.Mesh(geomTrans, glassMaterial);
+            transitionPipeMesh.position.x = 0;
+
+            const waterGeomTrans = new THREE.CylinderGeometry(r2 * 0.98, r1 * 0.98, lengthTrans, 32);
+            waterGeomTrans.rotateZ(Math.PI / 2);
+            const waterMeshTrans = new THREE.Mesh(waterGeomTrans, waterMaterial);
+            waterMeshTrans.position.x = 0;
+            waterMeshGroup.add(waterMeshTrans);
+
+            // 3. Pipe 2 (Small Section)
+            const geom2 = new THREE.CylinderGeometry(r2, r2, length2, 32, 1, true);
+            geom2.rotateZ(Math.PI / 2);
+            pipeMesh2 = new THREE.Mesh(geom2, glassMaterial);
+            pipeMesh2.position.x = (lengthTrans / 2 + length2 / 2);
+            pipeMesh2.userData = { section: 2, name: "Bagian 2 (Penampang Kecil)" };
+
+            const waterGeom2 = new THREE.CylinderGeometry(r2 * 0.98, r2 * 0.98, length2, 32);
+            waterGeom2.rotateZ(Math.PI / 2);
+            const waterMesh2 = new THREE.Mesh(waterGeom2, waterMaterial);
+            waterMesh2.position.x = pipeMesh2.position.x;
+            waterMeshGroup.add(waterMesh2);
+
+            // Flange Rings
+            const ring1 = new THREE.Mesh(new THREE.TorusGeometry(r1, 0.05, 16, 32), ringMaterial);
+            ring1.rotation.y = Math.PI / 2;
+            ring1.position.x = -(lengthTrans / 2 + length1);
+
+            const ringMid1 = new THREE.Mesh(new THREE.TorusGeometry(r1, 0.05, 16, 32), ringMaterial);
+            ringMid1.rotation.y = Math.PI / 2;
+            ringMid1.position.x = -lengthTrans / 2;
+
+            const ringMid2 = new THREE.Mesh(new THREE.TorusGeometry(r2, 0.05, 16, 32), ringMaterial);
+            ringMid2.rotation.y = Math.PI / 2;
+            ringMid2.position.x = lengthTrans / 2;
+
+            const ring2 = new THREE.Mesh(new THREE.TorusGeometry(r2, 0.05, 16, 32), ringMaterial);
+            ring2.rotation.y = Math.PI / 2;
+            ring2.position.x = (lengthTrans / 2 + length2);
+
+            waterMeshGroup.add(pipeMesh1, transitionPipeMesh, pipeMesh2, ring1, ringMid1, ringMid2, ring2);
+        }
+
+        function createWaterParticles() {
+            // Clear existing particles
+            while (particleGroup.children.length > 0) {
+                particleGroup.remove(particleGroup.children[0]);
+            }
+            particles = [];
+
+            const sphereGeom = new THREE.SphereGeometry(0.045, 8, 8);
+            const particleMat = new THREE.MeshBasicMaterial({
+                color: 0x38bdf8,
+                transparent: true,
+                opacity: 0.85
+            });
+
+            const startX = -4.1;
+            const endX = 4.1;
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const particle = new THREE.Mesh(sphereGeom, particleMat.clone());
+                
+                // Random position along X axis
+                const posX = startX + Math.random() * (endX - startX);
+                const radiusAtX = getPipeRadiusAt(posX);
+
+                // Random position inside pipe cross-section
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.sqrt(Math.random()) * (radiusAtX * 0.82);
+
+                particle.position.set(posX, r * Math.sin(angle), r * Math.cos(angle));
+                particle.userData = { angle: angle, normR: r / radiusAtX };
+
+                particleGroup.add(particle);
+                particles.push(particle);
+            }
+        }
+
+        function getPipeRadiusAt(x) {
+            const r1 = Math.sqrt(paramA1 / Math.PI) * 0.45;
+            const r2 = Math.sqrt(paramA2 / Math.PI) * 0.45;
+            const transStart = -0.9;
+            const transEnd = 0.9;
+
+            if (x < transStart) return r1;
+            if (x > transEnd) return r2;
+
+            // Linear interpolation through transition region
+            const t = (x - transStart) / (transEnd - transStart);
+            return r1 + t * (r2 - r1);
+        }
+
+        function getFluidVelocityAt(x) {
+            const r = getPipeRadiusAt(x);
+            const currentArea = Math.PI * Math.pow(r / 0.45, 2);
+            // Continuity equation: v = (A1 * v1) / A
+            return (paramA1 * paramV1) / currentArea;
+        }
+
+        function create3DLabels() {
+            while (labelGroup.children.length > 0) {
+                labelGroup.remove(labelGroup.children[0]);
+            }
+
+            const label1 = createCanvasSprite("Penampang A₁ | Speed v₁", "#38bdf8");
+            label1.position.set(-2.5, 1.5, 0);
+            label1.name = "label1";
+
+            const label2 = createCanvasSprite("Penampang A₂ | Speed v₂", "#34d399");
+            label2.position.set(2.5, 1.2, 0);
+            label2.name = "label2";
+
+            labelGroup.add(label1, label2);
+        }
+
+        function createCanvasSprite(text, color) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.roundRect(10, 10, 492, 108, 20);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'Bold 32px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 256, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.scale.set(2.4, 0.6, 1);
+            return sprite;
+        }
+
+        function createFlowArrows() {
+            while (arrowGroup.children.length > 0) {
+                arrowGroup.remove(arrowGroup.children[0]);
+            }
+
+            const dir = new THREE.Vector3(1, 0, 0);
+
+            // Arrow 1 (Pipa Besar)
+            const arrow1 = new THREE.ArrowHelper(dir, new THREE.Vector3(-3.2, 0, 0), 1.2, 0x38bdf8, 0.3, 0.2);
+            arrow1.name = "arrow1";
+
+            // Arrow 2 (Pipa Kecil)
+            const arrow2 = new THREE.ArrowHelper(dir, new THREE.Vector3(1.8, 0, 0), 2.2, 0x34d399, 0.4, 0.25);
+            arrow2.name = "arrow2";
+
+            arrowGroup.add(arrow1, arrow2);
+        }
+
+        function createManometers() {
+            while (manometerGroup.children.length > 0) {
+                manometerGroup.remove(manometerGroup.children[0]);
+            }
+
+            const tubeMat = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.3,
+                roughness: 0.1
+            });
+
+            const fluidMat = new THREE.MeshStandardMaterial({
+                color: 0xf59e0b,
+                transparent: true,
+                opacity: 0.8,
+                roughness: 0.2
+            });
+
+            // Manometer 1 (Pipa Besar)
+            const tubeGeom1 = new THREE.CylinderGeometry(0.12, 0.12, 2.5, 16);
+            const tube1 = new THREE.Mesh(tubeGeom1, tubeMat);
+            tube1.position.set(-2.5, 1.6, 0);
+
+            manometerFluid1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.8, 16), fluidMat);
+            manometerFluid1.position.set(-2.5, 1.2, 0);
+
+            // Manometer 2 (Pipa Kecil)
+            const tubeGeom2 = new THREE.CylinderGeometry(0.12, 0.12, 2.5, 16);
+            const tube2 = new THREE.Mesh(tubeGeom2, tubeMat);
+            tube2.position.set(2.5, 1.6, 0);
+
+            manometerFluid2 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.8, 16), fluidMat);
+            manometerFluid2.position.set(2.5, 0.7, 0);
+
+            manometerGroup.add(tube1, manometerFluid1, tube2, manometerFluid2);
+            manometerGroup.visible = (currentMode === 'bernoulli');
+        }
+
+        function setupPhysicsCalculations() {
+            // Continuity: v2 = (A1 * v1) / A2
+            paramV2 = (paramA1 * paramV1) / paramA2;
+
+            // Bernoulli (horizontal pipe: h1 = h2): P1 - P2 = 0.5 * rho * (v2^2 - v1^2)
+            // Delta P in kPa
+            const deltaP_Pascal = 0.5 * paramRho * (Math.pow(paramV2, 2) - Math.pow(paramV1, 2));
+            paramDeltaP = deltaP_Pascal / 1000; // Convert to kPa
+            paramP2 = Math.max(0.5, paramP1 - paramDeltaP);
+
+            // Update UI Elements
+            document.getElementById('val-a1').innerText = paramA1.toFixed(1) + ' cm²';
+            document.getElementById('val-a2').innerText = paramA2.toFixed(1) + ' cm²';
+            document.getElementById('val-v1').innerText = paramV1.toFixed(1) + ' m/s';
+            
+            document.getElementById('calc-v2').innerText = paramV2.toFixed(2);
+            document.getElementById('calc-delta-p').innerText = paramDeltaP.toFixed(2);
+            document.getElementById('calc-explanation').innerText = 
+                `A₁·v₁ (${paramA1.toFixed(1)}×${paramV1.toFixed(1)}) = A₂·v₂ (${paramA2.toFixed(1)}×${paramV2.toFixed(2)})`;
+
+            // Update Manometer Heights in 3D (Bernoulli mode)
+            if (manometerFluid1 && manometerFluid2) {
+                const h1 = Math.min(2.0, 0.5 + (paramP1 / 15) * 1.5);
+                const h2 = Math.min(2.0, Math.max(0.2, 0.5 + (paramP2 / 15) * 1.5));
+
+                manometerFluid1.scale.set(1, h1, 1);
+                manometerFluid1.position.y = 0.4 + h1 * 0.5;
+
+                manometerFluid2.scale.set(1, h2, 1);
+                manometerFluid2.position.y = 0.4 + h2 * 0.5;
+            }
+
+            // Update Arrow 2 Scale
+            const arrow2 = arrowGroup.getObjectByName("arrow2");
+            if (arrow2) {
+                const scaleLen = Math.min(3.0, 1.2 * (paramV2 / paramV1));
+                arrow2.setLength(scaleLen, 0.4, 0.25);
+            }
+        }
+
+        function updateSimulationParams() {
+            paramA1 = parseFloat(document.getElementById('slider-a1').value);
+            paramA2 = parseFloat(document.getElementById('slider-a2').value);
+            paramV1 = parseFloat(document.getElementById('slider-v1').value);
+
+            setupPhysicsCalculations();
+            buildPipe3DGeometry();
+            createWaterParticles();
+            create3DLabels();
+            createFlowArrows();
+            createManometers();
+        }
+
+        function setLearningMode(mode) {
+            currentMode = mode;
+            const btnCont = document.getElementById('btn-mode-continuity');
+            const btnBern = document.getElementById('btn-mode-bernoulli');
+            const hudTitle = document.getElementById('hud-mode-title');
+            const hudFormulaPrimary = document.getElementById('hud-formula-primary');
+            const hudFormulaSub = document.getElementById('hud-formula-sub');
+            const hudCompare1 = document.getElementById('hud-compare-1');
+            const hudCompare2 = document.getElementById('hud-compare-2');
+            const pressureBadge = document.getElementById('calc-pressure-badge');
+
+            if (mode === 'continuity') {
+                btnCont.className = "px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center space-x-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg";
+                btnBern.className = "px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center space-x-2 text-slate-300 hover:text-white hover:bg-slate-800/50";
+                
+                hudTitle.innerText = "MODE KONTINUITAS";
+                hudFormulaPrimary.innerText = "A₁ · v₁ = A₂ · v₂";
+                hudFormulaSub.innerText = "Debit Aliran Konstan (Q₁ = Q₂)";
+                hudCompare1.innerText = "A₁ > A₂";
+                hudCompare2.innerText = "v₁ < v₂";
+
+                manometerGroup.visible = false;
+                pressureBadge.classList.add('hidden');
+            } else {
+                btnBern.className = "px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center space-x-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg";
+                btnCont.className = "px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 flex items-center space-x-2 text-slate-300 hover:text-white hover:bg-slate-800/50";
+
+                hudTitle.innerText = "MODE BERNOULLI";
+                hudFormulaPrimary.innerText = "P₁ + ½ρv₁² = P₂ + ½ρv₂²";
+                hudFormulaSub.innerText = "Pipa Horizontal (h₁ = h₂)";
+                hudCompare1.innerText = "v₁ < v₂";
+                hudCompare2.innerText = "P₁ > P₂";
+
+                manometerGroup.visible = true;
+                pressureBadge.classList.remove('hidden');
+            }
+        }
+
+        function toggleLabels() {
+            showLabels = !showLabels;
+            labelGroup.visible = showLabels;
+            document.getElementById('btn-toggle-labels').classList.toggle('opacity-50', !showLabels);
+        }
+
+        function toggleArrows() {
+            showArrows = !showArrows;
+            arrowGroup.visible = showArrows;
+            document.getElementById('btn-toggle-arrows').classList.toggle('opacity-50', !showArrows);
+        }
+
+        async function toggleCamera() {
+            const video = document.getElementById('video-background');
+            const icon = document.getElementById('icon-camera');
+
+            if (!cameraActive) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' }
+                    });
+                    video.srcObject = stream;
+                    video.classList.remove('hidden');
+                    icon.className = "fa-solid fa-video text-emerald-400 text-sm sm:text-base";
+                    cameraActive = true;
+                } catch (err) {
+                    alert("Gagal mengakses kamera. Pastikan izin kamera telah diberikan di browser smartphone Anda.");
+                    console.error("Camera Error:", err);
+                }
+            } else {
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                video.classList.add('hidden');
+                icon.className = "fa-solid fa-video-slash text-rose-400 text-sm sm:text-base";
+                cameraActive = false;
+            }
+        }
+
+        function setupRaycaster() {
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('pointerdown', onPointerDown);
+        }
+
+        function onPointerDown(event) {
+            // Ignore if clicking on UI buttons
+            if (event.target.tagName === 'BUTTON' || event.target.tagName === 'INPUT' || event.target.closest('.glass-panel')) {
+                return;
+            }
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects([pipeMesh1, pipeMesh2]);
+
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                const section = object.userData.section;
+                showPipeInspector(section);
+            }
+        }
+
+        function showPipeInspector(section) {
+            const inspector = document.getElementById('pipe-inspector');
+            const title = document.getElementById('inspector-title');
+            const area = document.getElementById('inspector-area');
+            const velocity = document.getElementById('inspector-velocity');
+            const pressure = document.getElementById('inspector-pressure');
+            const desc = document.getElementById('inspector-desc');
+            const badge = document.getElementById('inspector-badge');
+
+            if (section === 1) {
+                badge.className = "w-3 h-3 rounded-full bg-cyan-400 animate-ping";
+                title.innerText = "Bagian 1 (Penampang Besar)";
+                area.innerText = paramA1.toFixed(1) + " cm²";
+                velocity.innerText = paramV1.toFixed(2) + " m/s";
+                pressure.innerText = paramP1.toFixed(2) + " kPa";
+                desc.innerText = "Pada penampang besar, fluida melaju lebih lambat (v₁ < v₂), sehingga tekanannya lebih tinggi (P₁ > P₂).";
+            } else {
+                badge.className = "w-3 h-3 rounded-full bg-emerald-400 animate-ping";
+                title.innerText = "Bagian 2 (Penampang Kecil)";
+                area.innerText = paramA2.toFixed(1) + " cm²";
+                velocity.innerText = paramV2.toFixed(2) + " m/s";
+                pressure.innerText = paramP2.toFixed(2) + " kPa";
+                desc.innerText = "Pada penampang sempit, partikel fluida bergerak jauh lebih cepat (v₂ > v₁), menyebabkan penurunan tekanan (P₂ < P₁).";
+            }
+
+            inspector.classList.remove('hidden');
+        }
+
+        function closeInspector() {
+            document.getElementById('pipe-inspector').classList.add('hidden');
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // Animate Water Particles along pipe
+            const startX = -4.1;
+            const endX = 4.1;
+
+            particles.forEach((particle) => {
+                const posX = particle.position.x;
+                const velocityAtX = getFluidVelocityAt(posX);
+
+                // Move particle along X
+                particle.position.x += velocityAtX * delta * 0.8;
+
+                // Adjust Y and Z position based on pipe radius at current X
+                const currentRadius = getPipeRadiusAt(particle.position.x);
+                const r = particle.userData.normR * currentRadius * 0.82;
+                const angle = particle.userData.angle;
+
+                particle.position.y = r * Math.sin(angle);
+                particle.position.z = r * Math.cos(angle);
+
+                // Color Coding Particle Speed (Blue = Slower, Green/Yellow = Faster)
+                const speedRatio = Math.min(1.0, velocityAtX / 8.0);
+                particle.material.color.setHSL(0.55 - speedRatio * 0.35, 1.0, 0.5);
+
+                // Reset particle to beginning when reaching pipe end
+                if (particle.position.x > endX) {
+                    particle.position.x = startX;
+                }
+            });
+
+            // Update OrbitControls
+            controls.update();
+
+            // Render 3D Scene
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
